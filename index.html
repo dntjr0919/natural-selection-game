@@ -223,21 +223,41 @@
           </div>
         </div>
 
-        <!-- SCREEN B (암전 & 눈 감기 오버레이) -->
+        <!-- SCREEN B (암전 & 개별 대기 & 공통 눈 감기 카운트다운) -->
         <div id="screenBOverlay" class="absolute inset-0 bg-slate-950/95 z-30 flex flex-col items-center justify-center p-6 text-center transition-opacity duration-300">
-          <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-800 text-amber-400 text-3xl mb-4 shadow-inner border border-slate-700 animate-pulse">
-            🙈
-          </div>
-          <h3 class="text-2xl sm:text-3xl font-black text-white mb-2">눈을 감으세요</h3>
-          <div class="my-4 font-mono font-black text-6xl text-amber-400 tracking-wider">
-            <span id="timerBSeconds">3</span>
-          </div>
-          <div class="max-w-md bg-slate-900/90 border border-amber-500/30 rounded-xl p-3.5 mt-2">
-            <p class="text-sm font-semibold text-amber-300">
-              🔔 안내: 화면이 다시 원래대로 돌아오면, 3초 안에 눈에 띄는 과자 하나를 제거하세요!
+          
+          <!-- State 1: Individual Waiting Box (먼저 선택한 학생 전용 대기 화면) -->
+          <div id="screenBWaitingBox" class="flex flex-col items-center justify-center hidden">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-800 text-emerald-400 text-3xl mb-4 border border-emerald-500/40 animate-pulse">
+              ✅
+            </div>
+            <h3 class="text-xl sm:text-2xl font-black text-white mb-2">과자 선택 완료!</h3>
+            <p id="screenBWaitingMsg" class="text-xs sm:text-sm text-amber-300 font-semibold mb-4 animate-pulse">
+              다른 모둠원이 과자를 선택할 때까지 대기 중입니다...
             </p>
+            <div id="waitingPicksStatus" class="bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-2 text-xs text-slate-300">
+              모둠원 선택: <span id="picksCountBadge" class="font-bold text-amber-400 font-mono">1</span> / <span id="totalMembersBadge" class="font-bold font-mono">3</span>명 완료
+            </div>
+            <p class="text-[11px] text-slate-500 mt-4">모든 모둠원이 선택하거나 3초가 지나면 다 함께 3초 눈 감기 카운트다운으로 전환됩니다.</p>
           </div>
-          <p class="text-xs text-slate-500 mt-4">젓가락으로 뻥튀기 과자를 집어 도화지 밖으로 꺼내는 포식 활동입니다.</p>
+
+          <!-- State 2: Synchronized Shared 3-second Countdown (다 함께 눈 감기) -->
+          <div id="screenBCountdownBox" class="flex flex-col items-center justify-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-800 text-amber-400 text-3xl mb-4 shadow-inner border border-slate-700 animate-pulse">
+              🙈
+            </div>
+            <h3 class="text-2xl sm:text-3xl font-black text-white mb-2">눈을 감으세요</h3>
+            <div class="my-4 font-mono font-black text-6xl text-amber-400 tracking-wider">
+              <span id="timerBSeconds">3</span>
+            </div>
+            <div class="max-w-md bg-slate-900/90 border border-amber-500/30 rounded-xl p-3.5 mt-2">
+              <p class="text-sm font-semibold text-amber-300">
+                🔔 안내: 화면이 다시 원래대로 돌아오면, 3초 안에 눈에 띄는 과자 하나를 제거하세요!
+              </p>
+            </div>
+            <p class="text-xs text-slate-500 mt-4">젓가락으로 뻥튀기 과자를 집어 도화지 밖으로 꺼내는 포식 활동입니다.</p>
+          </div>
+
         </div>
 
         <!-- INITIAL PREVIEW OVERLAY (2초 초기 안내) -->
@@ -464,14 +484,13 @@
        Firebase 콘솔에서 확인하신 키 값을 아래 항목에 채워 넣어주세요.
        ========================================================================= */
     const BUILTIN_FIREBASE_CONFIG = {
-        apiKey: "AIzaSyCq5Df29022qSCYlYsrOjwrc4nVMC4Vv6E",
-        authDomain: "natural-selection-game.firebaseapp.com",
-        databaseURL: "https://natural-selection-game-default-rtdb.firebaseio.com",
-        projectId: "natural-selection-game",
-        storageBucket: "natural-selection-game.firebasestorage.app",
-        messagingSenderId: "6361427131",
-        appId: "1:6361427131:web:4751328155157a4c208d9e",
-        measurementId: "G-WMYQ5JHH4Y"
+      apiKey: "여기에_apiKey_입력",
+      authDomain: "여기에_authDomain_입력",
+      projectId: "여기에_projectId_입력",
+      storageBucket: "여기에_storageBucket_입력",
+      messagingSenderId: "여기에_messagingSenderId_입력",
+      appId: "여기에_appId_입력",
+      databaseURL: "" // 비워둘 경우 https://[projectId]-default-rtdb.firebaseio.com 로 자동 연결
     };
     /* =========================================================================
        AUDIO SYNTHESIZER (Web Audio API - No external sound files)
@@ -582,6 +601,7 @@
       // Cookies on the board
       cookies: [],
       eatenThisRound: 0, // max 15 eaten per generation to leave 25
+      currentRoundPicks: [], // List of member names who picked in this Screen A round
       
       // Active Phase in Game: 'initialPreview', 'screenB', 'screenA', 'reproduction', 'completed'
       phase: 'lobby',
@@ -764,6 +784,12 @@
         case 'COOKIE_EATEN':
           onRemoteCookieEaten(msg.payload.cookieId, msg.payload.eater);
           break;
+        case 'MEMBER_PICK_STATUS':
+          onRemoteMemberPicked(msg.payload.eater, msg.payload.totalPicks);
+          break;
+        case 'START_SHARED_SCREEN_B':
+          startSharedScreenBCountdown(msg.payload.duration || 3);
+          break;
         case 'PHASE_CHANGED':
           if (msg.payload.phase === 'screenB') {
             startScreenBTimer(msg.payload.seconds || 3);
@@ -860,6 +886,10 @@
 
     const screenBOverlay = document.getElementById('screenBOverlay');
     const timerBSeconds = document.getElementById('timerBSeconds');
+    const screenBWaitingBox = document.getElementById('screenBWaitingBox');
+    const screenBCountdownBox = document.getElementById('screenBCountdownBox');
+    const picksCountBadge = document.getElementById('picksCountBadge');
+    const totalMembersBadge = document.getElementById('totalMembersBadge');
     const initialPreviewOverlay = document.getElementById('initialPreviewOverlay');
     const clickFeedback = document.getElementById('clickFeedback');
 
@@ -1296,15 +1326,20 @@
       }, 2000);
     }
 
-    // SCREEN B: Black Screen Eyes Closed (3 seconds timer)
-    function startScreenBTimer(duration = 3) {
+    // Start Shared Screen B (눈 감기 3초 카운트다운 - 전체 모둠원 동시 진행)
+    function startSharedScreenBCountdown(duration = 3) {
       clearInterval(timerAInterval);
       clearInterval(timerBInterval);
 
       AppState.phase = 'screenB';
+      hasSelectedThisScreenA = false;
+
+      // Hide individual waiting box and show shared countdown box
+      if (screenBWaitingBox) screenBWaitingBox.classList.add('hidden');
+      if (screenBCountdownBox) screenBCountdownBox.classList.remove('hidden');
+
       screenBOverlay.classList.remove('hidden');
       screenATimerContainer.classList.add('opacity-0');
-      hasSelectedThisScreenA = false;
 
       let remaining = duration;
       timerBSeconds.textContent = remaining;
@@ -1317,21 +1352,39 @@
           sound.playCountdownBeep();
         } else {
           clearInterval(timerBInterval);
-          // Transition to Screen A
-          startScreenATimer(3.0);
+          
+          // Check if total cookies reached 25 (15 eaten)
+          const aliveCount = AppState.cookies.filter(c => c.alive).length;
+          if (aliveCount <= 25) {
+            checkConditionOrNextScreenB();
+          } else {
+            // Start next Screen A round for everyone!
+            startScreenATimer(3.0);
+          }
         }
       }, 1000);
     }
 
-    // SCREEN A: Eyes Open! (3 seconds timer in top-right)
+    // Alias for starting Screen B
+    function startScreenBTimer(duration = 3) {
+      startSharedScreenBCountdown(duration);
+    }
+
+    // SCREEN A: Eyes Open! (3초 선택 시간)
     function startScreenATimer(duration = 3.0) {
       clearInterval(timerAInterval);
       clearInterval(timerBInterval);
 
       AppState.phase = 'screenA';
-      screenBOverlay.classList.add('hidden');
-      screenATimerContainer.classList.remove('opacity-0');
+      AppState.currentRoundPicks = []; // Reset round picks
       hasSelectedThisScreenA = false;
+
+      // Hide overlays
+      screenBOverlay.classList.add('hidden');
+      if (screenBWaitingBox) screenBWaitingBox.classList.add('hidden');
+      if (screenBCountdownBox) screenBCountdownBox.classList.remove('hidden');
+
+      screenATimerContainer.classList.remove('opacity-0');
 
       let timeLeft = duration;
       timerASeconds.textContent = timeLeft.toFixed(1);
@@ -1346,7 +1399,7 @@
           timerABar.style.width = '0%';
           clearInterval(timerAInterval);
 
-          // If no selection was made during 3s, automatically transition to Screen B
+          // Screen A 3.0s timer finished: trigger shared Screen B countdown!
           onScreenATimeout();
         } else {
           timerASeconds.textContent = timeLeft.toFixed(1);
@@ -1357,13 +1410,15 @@
     }
 
     function onScreenATimeout() {
-      // If simulated bots are present, randomly pick 1-2 cookies to simulate group members
+      // Simulate bots if needed
       simulateBotClicksIfNeeded();
 
-      checkConditionOrNextScreenB();
+      // Broadcast shared Screen B countdown to everyone
+      broadcastAction('START_SHARED_SCREEN_B', { duration: 3 });
+      startSharedScreenBCountdown(3);
     }
 
-    // Unified cookie selection for both desktop click and fast mobile touch
+    // Handle user clicking a cookie on Screen A
     function handleCookieSelect(clientX, clientY) {
       if (AppState.phase !== 'screenA') return;
       if (hasSelectedThisScreenA) return; // Only 1 cookie per glance!
@@ -1374,7 +1429,7 @@
       const clickX = (clientX - rect.left) * scaleX;
       const clickY = (clientY - rect.top) * scaleY;
 
-      // Find clicked alive cookie with generous mobile touch radius (+8px)
+      // Find clicked alive cookie
       for (let i = AppState.cookies.length - 1; i >= 0; i--) {
         const c = AppState.cookies[i];
         if (!c.alive) continue;
@@ -1388,14 +1443,70 @@
           showClickFeedback();
           broadcastAction('COOKIE_EATEN', { cookieId: c.id, eater: AppState.userName });
 
-          // Also simulate bot teammates picking a cookie
+          // Register this player's pick
+          if (!AppState.currentRoundPicks.includes(AppState.userName)) {
+            AppState.currentRoundPicks.push(AppState.userName);
+          }
+
+          // Show individual waiting screen ONLY for this player!
+          showIndividualWaitingScreen();
+
+          // Broadcast pick status to group
+          broadcastAction('MEMBER_PICK_STATUS', {
+            eater: AppState.userName,
+            totalPicks: AppState.currentRoundPicks.length
+          });
+
+          // Simulate bot picks if solo testing
           simulateBotClicksIfNeeded();
 
-          setTimeout(() => {
-            checkConditionOrNextScreenB();
-          }, 300);
+          // Check if ALL active members in the room have picked
+          checkAllMembersPicked();
           break;
         }
+      }
+    }
+
+    function showIndividualWaitingScreen() {
+      // Turn screen black for THIS student only
+      screenBOverlay.classList.remove('hidden');
+      screenATimerContainer.classList.add('opacity-0');
+
+      // Show waiting message box, hide countdown box for now
+      if (screenBWaitingBox) screenBWaitingBox.classList.remove('hidden');
+      if (screenBCountdownBox) screenBCountdownBox.classList.add('hidden');
+
+      updateWaitingBadges();
+    }
+
+    function onRemoteMemberPicked(eater, totalPicks) {
+      if (!AppState.currentRoundPicks.includes(eater)) {
+        AppState.currentRoundPicks.push(eater);
+      }
+      updateWaitingBadges();
+
+      // If everyone picked, trigger shared countdown!
+      checkAllMembersPicked();
+    }
+
+    function updateWaitingBadges() {
+      const activeTotal = Math.max(1, AppState.members.length);
+      const pickedCount = AppState.currentRoundPicks.length;
+      if (picksCountBadge) picksCountBadge.textContent = pickedCount;
+      if (totalMembersBadge) totalMembersBadge.textContent = activeTotal;
+    }
+
+    function checkAllMembersPicked() {
+      const activeTotal = Math.max(1, AppState.members.length);
+      const pickedCount = AppState.currentRoundPicks.length;
+
+      // If all active members in room have picked their cookie in this round
+      if (pickedCount >= activeTotal) {
+        clearInterval(timerAInterval);
+        setTimeout(() => {
+          broadcastAction('START_SHARED_SCREEN_B', { duration: 3 });
+          startSharedScreenBCountdown(3);
+        }, 200);
       }
     }
 
@@ -1442,22 +1553,25 @@
     }
 
     function simulateBotClicksIfNeeded() {
-      // If bots exist in group, let them pick 1-2 cookies so solitary tester reaches 25 cookies comfortably
+      // If bots exist in group, let them pick 1 cookie each in this round
       const bots = AppState.members.filter(m => m.isBot);
       if (bots.length > 0) {
         bots.forEach(bot => {
-          const aliveCookies = AppState.cookies.filter(c => c.alive);
-          if (aliveCookies.length > 25) {
-            // Biased pick: cookies that DO NOT match background are noticed more easily!
-            const bgIsRed = (AppState.stage === 1);
-            let targetPool = aliveCookies.filter(c => bgIsRed ? (c.color !== 'red') : (c.color !== 'green'));
-            if (targetPool.length === 0 || Math.random() < 0.25) {
-              targetPool = aliveCookies;
-            }
-            const chosen = targetPool[Math.floor(Math.random() * targetPool.length)];
-            if (chosen) {
-              chosen.alive = false;
-              chosen.opacity = 0;
+          if (!AppState.currentRoundPicks.includes(bot.name)) {
+            AppState.currentRoundPicks.push(bot.name);
+            const aliveCookies = AppState.cookies.filter(c => c.alive);
+            if (aliveCookies.length > 25) {
+              // Biased pick: cookies that DO NOT match background are noticed more easily!
+              const bgIsRed = (AppState.stage === 1);
+              let targetPool = aliveCookies.filter(c => bgIsRed ? (c.color !== 'red') : (c.color !== 'green'));
+              if (targetPool.length === 0 || Math.random() < 0.25) {
+                targetPool = aliveCookies;
+              }
+              const chosen = targetPool[Math.floor(Math.random() * targetPool.length)];
+              if (chosen) {
+                chosen.alive = false;
+                chosen.opacity = 0;
+              }
             }
           }
         });
