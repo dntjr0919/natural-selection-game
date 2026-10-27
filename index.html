@@ -830,6 +830,8 @@
           AppState.stage = msg.payload.stage;
           AppState.generation = msg.payload.generation;
           AppState.cookies = msg.payload.cookies;
+          resizeCanvas();
+          updateCookiePixelCoords();
           startGameView();
           break;
         case 'COOKIE_EATEN':
@@ -862,6 +864,8 @@
           AppState.cookies = msg.payload.cookies;
           AppState.generation = msg.payload.generation;
           AppState.stage = msg.payload.stage;
+          resizeCanvas();
+          updateCookiePixelCoords();
           updateTopCounters();
           drawCookies();
           startScreenBTimer(3);
@@ -1247,8 +1251,9 @@
       const cols = 8;
       const rows = 5;
       const slots = [];
-      const minX = 0.07, maxX = 0.93;
-      const minY = 0.08, maxY = 0.92;
+      // Safe margins ensuring cookies never touch screen edges or get blocked by top HUD
+      const minX = 0.08, maxX = 0.92;
+      const minY = 0.13, maxY = 0.88;
       const cellW = (maxX - minX) / cols;
       const cellH = (maxY - minY) / rows;
 
@@ -1283,20 +1288,26 @@
     }
 
     function updateCookiePixelCoords() {
-      const w = gameCanvas.width || 800;
-      const h = gameCanvas.height || 600;
+      const rect = boardContainer.getBoundingClientRect();
+      const w = Math.max(300, Math.floor(rect.width || gameCanvas.width || 800));
+      const h = Math.max(200, Math.floor(rect.height || gameCanvas.height || 600));
+      gameCanvas.width = w;
+      gameCanvas.height = h;
+
       AppState.cookies.forEach(cookie => {
-        cookie.x = cookie.nx * w;
-        cookie.y = cookie.ny * h;
+        if (cookie.nx !== undefined && cookie.ny !== undefined) {
+          cookie.x = cookie.nx * w;
+          cookie.y = cookie.ny * h;
+        }
       });
     }
 
     function resizeCanvas() {
       const rect = boardContainer.getBoundingClientRect();
-      const w = Math.max(300, Math.floor(rect.width));
-      const h = Math.max(200, Math.floor(rect.height));
-      gameCanvas.width = w;
-      gameCanvas.height = h;
+      if (rect.width > 0 && rect.height > 0) {
+        gameCanvas.width = Math.floor(rect.width);
+        gameCanvas.height = Math.floor(rect.height);
+      }
       updateCookiePixelCoords();
     }
     window.addEventListener('resize', () => {
@@ -1315,28 +1326,35 @@
       // Subtle alpha for dotted border to avoid solid ring emphasis
       const dotAlpha = 0.05 + 0.18 * pulse; // 0.05 (매우 연함) ~ 0.23 (은은한 점선)
 
+      const canvasW = gameCanvas.width || 800;
+      const canvasH = gameCanvas.height || 600;
+
       AppState.cookies.forEach(cookie => {
         if (!cookie.alive && cookie.opacity <= 0) return;
+
+        // Dynamically compute local coordinates on THIS device to prevent cross-device pixel overflow
+        const cx = (cookie.nx !== undefined) ? cookie.nx * canvasW : (cookie.x || 0);
+        const cy = (cookie.ny !== undefined) ? cookie.ny * canvasH : (cookie.y || 0);
 
         ctx.save();
         ctx.globalAlpha = cookie.alive ? 1 : Math.max(0, cookie.opacity);
 
         // Extremely subtle micro-shadow
         ctx.beginPath();
-        ctx.arc(cookie.x + 0.4, cookie.y + 0.6, cookie.radius, 0, Math.PI * 2);
+        ctx.arc(cx + 0.4, cy + 0.6, cookie.radius, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
         ctx.fill();
 
         // Cookie Base Circle (flat wafer appearance)
         ctx.beginPath();
-        ctx.arc(cookie.x, cookie.y, cookie.radius, 0, Math.PI * 2);
+        ctx.arc(cx, cy, cookie.radius, 0, Math.PI * 2);
         ctx.fillStyle = cookie.hex;
         ctx.fill();
 
         // Wide-spaced dotted border (간격이 넓은 점선 테두리 - 강조 느낌 배제)
         // Dash pattern [2, 8]: 2px dot, 8px gap (approx 11 delicate dots per cookie)
         ctx.beginPath();
-        ctx.arc(cookie.x, cookie.y, cookie.radius, 0, Math.PI * 2);
+        ctx.arc(cx, cy, cookie.radius, 0, Math.PI * 2);
         ctx.setLineDash([2, 8]);
         ctx.lineWidth = 1.0;
         ctx.strokeStyle = `rgba(0, 0, 0, ${dotAlpha})`;
@@ -1480,12 +1498,17 @@
       const clickX = (clientX - rect.left) * scaleX;
       const clickY = (clientY - rect.top) * scaleY;
 
-      // Find clicked alive cookie
+      // Find clicked alive cookie using dynamic local coordinates
+      const canvasW = gameCanvas.width || 800;
+      const canvasH = gameCanvas.height || 600;
+
       for (let i = AppState.cookies.length - 1; i >= 0; i--) {
         const c = AppState.cookies[i];
         if (!c.alive) continue;
 
-        const dist = Math.hypot(clickX - c.x, clickY - c.y);
+        const cx = (c.nx !== undefined) ? c.nx * canvasW : (c.x || 0);
+        const cy = (c.ny !== undefined) ? c.ny * canvasH : (c.y || 0);
+        const dist = Math.hypot(clickX - cx, clickY - cy);
         if (dist <= c.radius + 8) {
           // Success: Cookie selected!
           hasSelectedThisScreenA = true;
@@ -1907,8 +1930,8 @@
 
       const w = gameCanvas.width || 800;
       const h = gameCanvas.height || 600;
-      const minX = 0.07, maxX = 0.93;
-      const minY = 0.08, maxY = 0.92;
+      const minX = 0.08, maxX = 0.92;
+      const minY = 0.13, maxY = 0.88;
 
       COLORS.forEach(c => {
         const countToAdd = additions[c.id] || 0;
