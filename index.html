@@ -8,6 +8,8 @@
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- QR Code Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Firebase App & Realtime Database SDK (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
@@ -46,6 +48,15 @@
     .pulsing {
       animation: pulse-ring 2s infinite ease-in-out;
     }
+    /* Responsive 2x QR Code image scaling */
+    #qrCodeContainer canvas, #qrCodeContainer img {
+      width: 100% !important;
+      height: auto !important;
+      max-width: 380px !important;
+      aspect-ratio: 1/1;
+      display: block;
+      margin: 0 auto;
+    }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
@@ -66,6 +77,11 @@
       <div id="roleBadge" class="hidden px-2.5 py-1 rounded text-xs font-semibold">
         <!-- Filled dynamically -->
       </div>
+      <!-- QR Code Button -->
+      <button id="btnOpenQrModal" class="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow" title="학생 접속용 QR 코드">
+        <span>📱</span>
+        <span class="hidden sm:inline">접속 QR</span>
+      </button>
       <button id="soundToggleBtn" class="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs flex items-center gap-1 transition" title="소리 토글">
         <span id="soundIcon">🔊</span>
       </button>
@@ -149,6 +165,9 @@
           <span class="text-xs text-slate-400">팀원 접속 코드:</span>
           <span id="waitingCodeDisplay" class="font-mono text-xl font-black text-amber-400 tracking-wider">----</span>
           <button id="btnCopyCode" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition">복사</button>
+          <button id="btnWaitingQr" class="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-2 py-1 rounded transition flex items-center gap-1">
+            <span>📱</span><span>QR</span>
+          </button>
         </div>
       </div>
 
@@ -277,6 +296,37 @@
       </div>
     </section>
 
+
+
+    <!-- QR CODE MODAL (학생 스마트폰 접속용 2배 대형 반응형 QR 코드 팝업) -->
+    <div id="modalQrCode" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 hidden">
+      <div class="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5 sm:p-7 text-center shadow-2xl relative max-h-[95vh] overflow-y-auto">
+        <button id="btnCloseQrModal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold">✕</button>
+
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 text-2xl mb-2">
+          📱
+        </div>
+        <h3 class="text-xl font-black text-white mb-1">학생 스마트폰 접속 QR</h3>
+        <p class="text-xs text-slate-400 mb-3">스마트폰 카메라로 비추면 주소 입력 없이 바로 접속됩니다.</p>
+
+        <!-- QR Code Canvas / Container (교실 빔프로젝터/모니터에선 2배 대형 380px, 모바일에서는 화면 폭에 자동 맞춤) -->
+        <div class="bg-white p-3 sm:p-5 rounded-2xl shadow-inner inline-flex items-center justify-center mx-auto mb-4 border-2 border-slate-700 max-w-full">
+          <div id="qrCodeContainer" class="flex items-center justify-center w-[72vw] max-w-[380px] aspect-square"></div>
+        </div>
+
+        <!-- URL Display & Copy Button -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 mb-4 flex items-center justify-between gap-2 max-w-[420px] mx-auto">
+          <span id="qrUrlDisplay" class="text-xs font-mono text-amber-300 truncate max-w-[200px] sm:max-w-[280px]">https://...</span>
+          <button id="btnCopyQrUrl" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white rounded-lg border border-slate-700 transition shrink-0">
+            주소 복사
+          </button>
+        </div>
+
+        <button id="btnCloseQrBottom" class="w-full max-w-[420px] mx-auto py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition">
+          닫기
+        </button>
+      </div>
+    </div>
 
     <!-- 4. REPRODUCTION / BREEDING MODAL (증식 및 비율 계산 화면) -->
     <div id="modalReproduction" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
@@ -2060,6 +2110,80 @@
 
     // Initialize Firebase on page load
     initFirebaseService();
+
+    
+    // QR Code Modal & Generator
+    const modalQrCode = document.getElementById('modalQrCode');
+    const btnOpenQrModal = document.getElementById('btnOpenQrModal');
+    const btnWaitingQr = document.getElementById('btnWaitingQr');
+    const btnCloseQrModal = document.getElementById('btnCloseQrModal');
+    const btnCloseQrBottom = document.getElementById('btnCloseQrBottom');
+    const btnCopyQrUrl = document.getElementById('btnCopyQrUrl');
+    const qrUrlDisplay = document.getElementById('qrUrlDisplay');
+    const qrCodeContainer = document.getElementById('qrCodeContainer');
+    let qrGeneratorInstance = null;
+
+    function openQrModal() {
+      const currentUrl = window.location.href;
+      if (qrUrlDisplay) {
+        qrUrlDisplay.textContent = currentUrl;
+      }
+      if (qrCodeContainer) {
+        qrCodeContainer.innerHTML = '';
+        if (window.QRCode) {
+          // Render at 2x resolution (400x400) for sharp projection scanning, scaled responsively via CSS
+          qrGeneratorInstance = new QRCode(qrCodeContainer, {
+            text: currentUrl,
+            width: 400,
+            height: 400,
+            colorDark: '#0f172a',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } else {
+          qrCodeContainer.innerHTML = `<div class="text-xs text-slate-800 p-4">QR 코드를 생성 중입니다...<br><span class="font-mono text-[10px] break-all">${currentUrl}</span></div>`;
+        }
+      }
+      modalQrCode.classList.remove('hidden');
+    }
+
+    function closeQrModal() {
+      modalQrCode.classList.add('hidden');
+    }
+
+    if (btnOpenQrModal) {
+      btnOpenQrModal.addEventListener('click', openQrModal);
+    }
+    if (btnWaitingQr) {
+      btnWaitingQr.addEventListener('click', openQrModal);
+    }
+    if (btnCloseQrModal) {
+      btnCloseQrModal.addEventListener('click', closeQrModal);
+    }
+    if (btnCloseQrBottom) {
+      btnCloseQrBottom.addEventListener('click', closeQrModal);
+    }
+    if (btnCopyQrUrl) {
+      btnCopyQrUrl.addEventListener('click', () => {
+        const url = window.location.href;
+        try {
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(url);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = url;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          btnCopyQrUrl.textContent = '복사됨!';
+          setTimeout(() => { btnCopyQrUrl.textContent = '주소 복사'; }, 1500);
+        } catch (e) {
+          btnCopyQrUrl.textContent = '복사 실패';
+        }
+      });
+    }
 
     window.addEventListener('load', startPulseAnimationLoop);
     startPulseAnimationLoop();
