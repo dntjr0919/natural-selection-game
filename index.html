@@ -63,9 +63,9 @@
 
   <!-- TOP NAVIGATION / HEADER (상단 바 변경 없이 항상 깔끔하게 유지) -->
   <header id="appHeader" class="bg-slate-800/90 border-b border-slate-700 backdrop-blur px-3 sm:px-4 py-2.5 flex items-center justify-between sticky top-0 z-40">
-    <div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
-      <div class="bg-amber-500 text-slate-950 font-black text-xs px-2 py-1 rounded-md tracking-wider shrink-0">탐구실험</div>
-      <h1 class="font-bold text-sm sm:text-base text-white whitespace-nowrap">자연선택 과정 모의실험</h1>
+    <div id="btnGoHome" class="flex items-center space-x-2 sm:space-x-3 shrink-0 cursor-pointer hover:opacity-80 transition select-none group" title="처음 화면으로 돌아가기">
+      <div class="bg-amber-500 text-slate-950 font-black text-xs px-2 py-1 rounded-md tracking-wider shrink-0 group-hover:scale-105 transition">탐구실험</div>
+      <h1 class="font-bold text-sm sm:text-base text-white whitespace-nowrap group-hover:text-amber-300 transition">자연선택 과정 모의실험</h1>
     </div>
 
     <!-- Right Controls: QR & Sound Only (불필요한 배지 없이 일정하게 유지) -->
@@ -153,10 +153,7 @@
         <div class="mt-3 inline-flex items-center gap-2 bg-slate-900 border border-slate-700 px-4 py-2 rounded-xl">
           <span class="text-xs text-slate-400">팀원 접속 코드:</span>
           <span id="waitingCodeDisplay" class="font-mono text-xl font-black text-amber-400 tracking-wider">----</span>
-          <button id="btnCopyCode" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition">복사</button>
-          <button id="btnWaitingQr" class="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-2 py-1 rounded transition flex items-center gap-1">
-            <span>📱</span><span>QR</span>
-          </button>
+          <button id="btnCopyCode" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition font-semibold">복사</button>
         </div>
       </div>
 
@@ -2090,7 +2087,6 @@
     // QR Code Modal & Generator
     const modalQrCode = document.getElementById('modalQrCode');
     const btnOpenQrModal = document.getElementById('btnOpenQrModal');
-    const btnWaitingQr = document.getElementById('btnWaitingQr');
     const btnCloseQrModal = document.getElementById('btnCloseQrModal');
     const btnCloseQrBottom = document.getElementById('btnCloseQrBottom');
     const btnCopyQrUrl = document.getElementById('btnCopyQrUrl');
@@ -2129,9 +2125,6 @@
     if (btnOpenQrModal) {
       btnOpenQrModal.addEventListener('click', openQrModal);
     }
-    if (btnWaitingQr) {
-      btnWaitingQr.addEventListener('click', openQrModal);
-    }
     if (btnCloseQrModal) {
       btnCloseQrModal.addEventListener('click', closeQrModal);
     }
@@ -2158,6 +2151,44 @@
           btnCopyQrUrl.textContent = '복사 실패';
         }
       });
+    }
+
+        // Go Home / Reset to Lobby when clicking top-left title
+    const btnGoHome = document.getElementById('btnGoHome');
+
+    function resetToHomeScreen() {
+      // Clear all active game intervals
+      clearInterval(timerAInterval);
+      clearInterval(timerBInterval);
+
+      // Hide active screens and modals
+      screenWaiting.classList.add('hidden');
+      screenGame.classList.add('hidden');
+      screenResults.classList.add('hidden');
+      modalReproduction.classList.add('hidden');
+      modalStageTransition.classList.add('hidden');
+      modalQrCode.classList.add('hidden');
+
+      // Show lobby & ensure header/footer are visible
+      screenLobby.classList.remove('hidden');
+      if (appHeader) appHeader.classList.remove('hidden');
+      if (appFooter) appFooter.classList.remove('hidden');
+
+      // Reset AppState to clean state
+      AppState.phase = 'lobby';
+      AppState.cookies = [];
+      AppState.eatenThisRound = 0;
+      AppState.currentRoundPicks = [];
+      AppState.stage = 1;
+      AppState.generation = 1;
+      AppState.history = { stage1: [], stage2: [] };
+
+      showToast('처음 화면으로 돌아왔습니다.', 'info');
+      sound.playPop();
+    }
+
+    if (btnGoHome) {
+      btnGoHome.addEventListener('click', resetToHomeScreen);
     }
 
     window.addEventListener('load', startPulseAnimationLoop);
