@@ -234,6 +234,12 @@
         <!-- Interactive Canvas for Cookies -->
         <canvas id="gameCanvas" class="w-full h-full block cursor-crosshair touch-none"></canvas>
 
+        <!-- FLOATING BANNER ON SCREEN A: WAITING STATUS WHILE KEEPING CANVAS VISIBLE -->
+        <div id="screenAWaitingBanner" class="absolute top-14 left-1/2 -translate-x-1/2 z-20 bg-slate-900/90 backdrop-blur border border-amber-500/50 text-white text-xs px-3.5 py-1.5 rounded-xl shadow-xl flex items-center gap-2 pointer-events-none hidden transition-all">
+          <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-[10px]">✓</span>
+          <span class="text-[11px] sm:text-xs"><strong class="text-amber-300">선택 완료!</strong> 다른 모둠원 대기 중... (<span id="picksCountBadgeA" class="font-bold text-amber-400 font-mono">1</span>/<span id="totalMembersBadgeA" class="font-bold font-mono">3</span>명)</span>
+        </div>
+
         <!-- TOP LEFT HUD: STAGE & REMAINING COOKIES & SOUND TOGGLE -->
         <div id="screenAHudTopLeft" class="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 pointer-events-auto">
           <div class="bg-slate-900/85 backdrop-blur border border-slate-700/80 px-2.5 py-1 rounded-xl shadow-xl flex items-center gap-2 text-xs">
@@ -968,6 +974,9 @@
     const ctx = gameCanvas.getContext('2d');
 
     const screenATimerContainer = document.getElementById('screenATimerContainer');
+    const screenAWaitingBanner = document.getElementById('screenAWaitingBanner');
+    const picksCountBadgeA = document.getElementById('picksCountBadgeA');
+    const totalMembersBadgeA = document.getElementById('totalMembersBadgeA');
     const timerASeconds = document.getElementById('timerASeconds');
     const timerABar = document.getElementById('timerABar');
 
@@ -1448,16 +1457,15 @@
 
       // 2-second breathing pulse cycle (T = 2000ms): smoothly oscillates between 0 and 1
       const pulse = 0.5 + 0.5 * Math.sin((time / 1000) * Math.PI);
-      // Subtle alpha for dotted border to avoid solid ring emphasis
-      const dotAlpha = 0.05 + 0.18 * pulse; // 0.05 (매우 연함) ~ 0.23 (은은한 점선)
+      const dotAlpha = 0.05 + 0.18 * pulse;
 
       const canvasW = gameCanvas.width || 800;
       const canvasH = gameCanvas.height || 600;
 
+      // 1. Draw alive cookies
       AppState.cookies.forEach(cookie => {
         if (!cookie.alive && cookie.opacity <= 0) return;
 
-        // Dynamically compute local coordinates on THIS device to prevent cross-device pixel overflow
         const cx = (cookie.nx !== undefined) ? cookie.nx * canvasW : (cookie.x || 0);
         const cy = (cookie.ny !== undefined) ? cookie.ny * canvasH : (cookie.y || 0);
 
@@ -1470,23 +1478,86 @@
         ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
         ctx.fill();
 
-        // Cookie Base Circle (flat wafer appearance)
+        // Cookie Base Circle
         ctx.beginPath();
         ctx.arc(cx, cy, cookie.radius, 0, Math.PI * 2);
         ctx.fillStyle = cookie.hex;
         ctx.fill();
 
-        // Wide-spaced dotted border (간격이 넓은 점선 테두리 - 강조 느낌 배제)
-        // Dash pattern [2, 8]: 2px dot, 8px gap (approx 11 delicate dots per cookie)
+        // Dotted border
         ctx.beginPath();
         ctx.arc(cx, cy, cookie.radius, 0, Math.PI * 2);
         ctx.setLineDash([2, 8]);
         ctx.lineWidth = 1.0;
         ctx.strokeStyle = `rgba(0, 0, 0, ${dotAlpha})`;
         ctx.stroke();
-        ctx.setLineDash([]); // Reset line dash
+        ctx.setLineDash([]);
 
         ctx.restore();
+      });
+
+      // 2. Draw eater name badges for cookies removed during this Screen A glance
+      AppState.cookies.forEach(cookie => {
+        if (cookie.eatenInRound && cookie.eater) {
+          const cx = (cookie.nx !== undefined) ? cookie.nx * canvasW : (cookie.x || 0);
+          const cy = (cookie.ny !== undefined) ? cookie.ny * canvasH : (cookie.y || 0);
+
+          ctx.save();
+
+          // Faint outline marking where the cookie was removed
+          ctx.beginPath();
+          ctx.arc(cx, cy, cookie.radius, 0, Math.PI * 2);
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Name pill badge
+          const label = cookie.eater;
+          ctx.font = 'bold 11px Pretendard, sans-serif';
+          const textMetrics = ctx.measureText(label);
+          const pillW = textMetrics.width + 24;
+          const pillH = 22;
+          const pillX = cx - pillW / 2;
+          const pillY = cy - pillH / 2;
+          const radius = 6;
+
+          // Shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+          ctx.shadowBlur = 8;
+          ctx.shadowOffsetY = 2;
+
+          // Badge background
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(pillX, pillY, pillW, pillH, radius);
+          } else {
+            ctx.rect(pillX, pillY, pillW, pillH);
+          }
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+          ctx.fill();
+          ctx.shadowColor = 'transparent';
+
+          // Badge border
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#f59e0b'; // amber-500
+          ctx.stroke();
+
+          // Checkmark indicator dot
+          ctx.beginPath();
+          ctx.arc(pillX + 9, cy, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#10b981'; // emerald-500
+          ctx.fill();
+
+          // Eater text
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, pillX + 17, cy + 0.5);
+
+          ctx.restore();
+        }
       });
     }
 
@@ -1496,6 +1567,14 @@
     let timerAInterval = null;
     let timerBInterval = null;
     let hasSelectedThisScreenA = false;
+    let botTimers = [];
+
+    function clearBotTimers() {
+      if (botTimers && botTimers.length > 0) {
+        botTimers.forEach(t => clearTimeout(t));
+        botTimers = [];
+      }
+    }
 
     function clearAllGameTimers() {
       if (timerAInterval) {
@@ -1506,6 +1585,7 @@
         clearInterval(timerBInterval);
         timerBInterval = null;
       }
+      clearBotTimers();
     }
 
     function startGameView() {
@@ -1539,6 +1619,9 @@
 
       AppState.phase = 'screenB';
       hasSelectedThisScreenA = false;
+
+      // Hide Screen A waiting banner
+      if (screenAWaitingBanner) screenAWaitingBanner.classList.add('hidden');
 
       // Hide individual waiting box and show shared countdown box
       if (screenBWaitingBox) screenBWaitingBox.classList.add('hidden');
@@ -1601,12 +1684,22 @@
       AppState.currentRoundPicks = []; // Reset round picks
       hasSelectedThisScreenA = false;
 
-      // Hide overlays
+      // Reset eaten tags for the new glance ("다시 원을 고를 때 초기화")
+      AppState.cookies.forEach(c => {
+        c.eatenInRound = false;
+      });
+
+      // Hide overlays and waiting banner
+      if (screenAWaitingBanner) screenAWaitingBanner.classList.add('hidden');
       screenBOverlay.classList.add('hidden');
       if (screenBWaitingBox) screenBWaitingBox.classList.add('hidden');
       if (screenBCountdownBox) screenBCountdownBox.classList.remove('hidden');
 
       screenATimerContainer.classList.remove('opacity-0');
+      drawCookies();
+
+      // Schedule bots to pick evenly throughout the 3.0s window
+      scheduleBotPicks(duration);
 
       let timeLeft = duration;
       timerASeconds.textContent = timeLeft.toFixed(1);
@@ -1633,10 +1726,17 @@
 
     function onScreenATimeout() {
       if (AppState.phase !== 'screenA') return;
-      // Simulate bots if needed
-      simulateBotClicksIfNeeded();
+      clearBotTimers();
 
-      // Broadcast shared Screen B countdown to everyone (Host broadcasts to avoid 6 duplicate calls)
+      // Ensure any pending bots make their pick before Screen A closes
+      const bots = AppState.members.filter(m => m.isBot);
+      bots.forEach(bot => {
+        if (!AppState.currentRoundPicks.includes(bot.name)) {
+          executeBotPick(bot.name);
+        }
+      });
+
+      // Broadcast shared Screen B countdown to everyone (Host broadcasts to avoid duplicate calls)
       if (AppState.role === 'host') {
         broadcastAction('START_SHARED_SCREEN_B', { duration: 3 });
       }
@@ -1690,9 +1790,6 @@
             totalPicks: AppState.currentRoundPicks.length
           });
 
-          // Simulate bot picks if solo testing
-          simulateBotClicksIfNeeded();
-
           // Check if ALL active members in the room have picked
           checkAllMembersPicked();
           break;
@@ -1701,14 +1798,10 @@
     }
 
     function showIndividualWaitingScreen() {
-      // Turn screen black for THIS student only
-      screenBOverlay.classList.remove('hidden');
-      screenATimerContainer.classList.add('opacity-0');
-
-      // Show waiting message box, hide countdown box for now
-      if (screenBWaitingBox) screenBWaitingBox.classList.remove('hidden');
-      if (screenBCountdownBox) screenBCountdownBox.classList.add('hidden');
-
+      // Keep canvas visible on Screen A so student can see circles and who picked which circle!
+      if (screenAWaitingBanner) {
+        screenAWaitingBanner.classList.remove('hidden');
+      }
       updateWaitingBadges();
     }
 
@@ -1727,6 +1820,8 @@
       const pickedCount = AppState.currentRoundPicks.length;
       if (picksCountBadge) picksCountBadge.textContent = pickedCount;
       if (totalMembersBadge) totalMembersBadge.textContent = activeTotal;
+      if (picksCountBadgeA) picksCountBadgeA.textContent = pickedCount;
+      if (totalMembersBadgeA) totalMembersBadgeA.textContent = activeTotal;
     }
 
     function checkAllMembersPicked() {
@@ -1780,6 +1875,8 @@
 
       c.alive = false;
       c.opacity = 0;
+      c.eater = eater || AppState.userName;
+      c.eatenInRound = true; // Show name tag on Screen A while waiting
       sound.playPop();
       drawCookies();
       updateTopCounters();
@@ -1789,32 +1886,54 @@
       eatCookie(cookieId, eater);
     }
 
-    function simulateBotClicksIfNeeded() {
-      // If bots exist in group, let them pick 1 cookie each in this round
+    // Schedule bots evenly across the 3.0-second Screen A window
+    function scheduleBotPicks(duration = 3.0) {
+      clearBotTimers();
       const bots = AppState.members.filter(m => m.isBot);
-      if (bots.length > 0) {
-        bots.forEach(bot => {
-          if (!AppState.currentRoundPicks.includes(bot.name)) {
-            AppState.currentRoundPicks.push(bot.name);
-            const aliveCookies = AppState.cookies.filter(c => c.alive);
-            if (aliveCookies.length > 25) {
-              // Biased pick: cookies that DO NOT match background are noticed more easily!
-              const bgIsRed = (AppState.stage === 1);
-              let targetPool = aliveCookies.filter(c => bgIsRed ? (c.color !== 'red') : (c.color !== 'green'));
-              if (targetPool.length === 0 || Math.random() < 0.25) {
-                targetPool = aliveCookies;
-              }
-              const chosen = targetPool[Math.floor(Math.random() * targetPool.length)];
-              if (chosen) {
-                chosen.alive = false;
-                chosen.opacity = 0;
-              }
-            }
-          }
-        });
-        drawCookies();
-        updateTopCounters();
+      if (bots.length === 0) return;
+
+      const totalBots = bots.length;
+      // Spread reaction times naturally between 400ms and 2600ms
+      const startMs = 450;
+      const endMs = Math.max(startMs + 200, Math.round(duration * 1000 - 350));
+      const step = totalBots > 1 ? (endMs - startMs) / (totalBots - 1) : 0;
+
+      bots.forEach((bot, index) => {
+        const baseDelay = totalBots === 1 ? 1200 : Math.round(startMs + index * step);
+        // Small organic jitter (+/- 60ms) so bots feel like real independent students
+        const jitter = Math.round((Math.random() - 0.5) * 120);
+        const delay = Math.max(300, Math.min(2700, baseDelay + jitter));
+
+        const timerId = setTimeout(() => {
+          executeBotPick(bot.name);
+        }, delay);
+
+        botTimers.push(timerId);
+      });
+    }
+
+    function executeBotPick(botName) {
+      if (AppState.phase !== 'screenA') return;
+      if (AppState.currentRoundPicks.includes(botName)) return;
+
+      AppState.currentRoundPicks.push(botName);
+
+      const aliveCookies = AppState.cookies.filter(c => c.alive);
+      if (aliveCookies.length > 25) {
+        // Biased pick: cookies that DO NOT match background are noticed more easily
+        const bgIsRed = (AppState.stage === 1);
+        let targetPool = aliveCookies.filter(c => bgIsRed ? (c.color !== 'red') : (c.color !== 'green'));
+        if (targetPool.length === 0 || Math.random() < 0.25) {
+          targetPool = aliveCookies;
+        }
+        const chosen = targetPool[Math.floor(Math.random() * targetPool.length)];
+        if (chosen) {
+          eatCookie(chosen.id, botName);
+        }
       }
+
+      updateWaitingBadges();
+      checkAllMembersPicked();
     }
 
     function checkConditionOrNextScreenB() {
