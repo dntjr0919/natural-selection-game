@@ -137,10 +137,10 @@
         </button>
       </div>
 
-      <!-- Quick Test Notice -->
+      <!-- Activity Notice -->
       <div class="mt-5 pt-4 border-t border-slate-700/60 text-center">
         <p class="text-[11px] text-slate-400">
-          💡 혼자 테스트할 때는 방을 생성한 후 <strong class="text-amber-400">"가상 팀원 추가"</strong> 버튼으로 바로 실험을 진행할 수 있습니다.
+          💡 모둠원이 각자의 스마트폰으로 방장의 <strong class="text-amber-400">참여 코드</strong>를 입력하고 입장하면 함께 탐구에 참여합니다.
         </p>
       </div>
     </section>
@@ -166,14 +166,6 @@
         <div id="memberList" class="space-y-2">
           <!-- Member items inserted here -->
         </div>
-      </div>
-
-      <!-- Quick Bot Add for Solo Testing -->
-      <div class="flex items-center justify-between mb-5 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-lg">
-        <span class="text-xs text-amber-200">혼자 테스트 중이신가요?</span>
-        <button id="btnAddBots" class="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded transition">
-          + 가상 팀원 2명 자동 추가
-        </button>
       </div>
 
       <!-- Action Buttons -->
@@ -851,6 +843,7 @@
           break;
         case 'REPRO_APPROVED':
           closeReproductionModal();
+          AppState.phase = 'screenB';
           AppState.cookies = msg.payload.cookies;
           AppState.generation = msg.payload.generation;
           AppState.stage = msg.payload.stage;
@@ -867,6 +860,7 @@
           break;
         case 'STAGE_TRANSITION_PROCEED':
           closeStageTransitionModal();
+          AppState.phase = 'game';
           initStage(2);
           break;
         case 'STAGE_FINISHED':
@@ -1018,6 +1012,7 @@
       AppState.groupName = groupName;
       AppState.roomCode = code;
       AppState.members = [{ name: hostName, role: 'host' }];
+      AppState.history = { stage1: [], stage2: [] };
 
       if (isFirebaseReady && firebaseDb) {
         firebaseDb.ref(`rooms/${code}`).set({
@@ -1120,20 +1115,6 @@
       }
     });
 
-    // Add Simulated Bots for Solo Testing
-    btnAddBots.addEventListener('click', () => {
-      if (!AppState.members.some(m => m.name === '학생1(가상)')) {
-        AppState.members.push({ name: '학생1(가상)', role: 'guest', isBot: true });
-      }
-      if (!AppState.members.some(m => m.name === '학생2(가상)')) {
-        AppState.members.push({ name: '학생2(가상)', role: 'guest', isBot: true });
-      }
-      updateMemberListUI();
-      sound.playPop();
-    });
-
-
-
     btnStartGame.addEventListener('click', () => {
       initStage(1);
     });
@@ -1143,10 +1124,7 @@
     });
 
     btnRestartExp.addEventListener('click', () => {
-      screenResults.classList.add('hidden');
-      screenLobby.classList.remove('hidden');
-      if (appHeader) appHeader.classList.remove('hidden');
-      if (appFooter) appFooter.classList.remove('hidden');
+      resetToHomeScreen();
     });
 
     /* =========================================================================
@@ -1181,7 +1159,6 @@
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full ${m.role === 'host' ? 'bg-amber-400' : 'bg-indigo-400'}"></span>
             <span class="font-semibold text-white">${m.name}</span>
-            ${m.isBot ? '<span class="text-[10px] text-slate-400 bg-slate-700 px-1.5 py-0.2 rounded">가상</span>' : ''}
           </div>
           <span class="text-[11px] ${m.role === 'host' ? 'text-amber-400 font-bold' : 'text-slate-400'}">${m.role === 'host' ? '방장' : '참여 중'}</span>
         `;
@@ -1196,6 +1173,12 @@
       AppState.stage = stageNum;
       AppState.generation = 1;
       AppState.eatenThisRound = 0;
+      AppState.phase = 'game';
+
+      // Always clear history when starting a fresh game from Stage 1
+      if (stageNum === 1) {
+        AppState.history = { stage1: [], stage2: [] };
+      }
 
       // Show game board screen first so canvas has real rendered dimensions
       screenWaiting.classList.add('hidden');
@@ -1412,7 +1395,7 @@
 
     // Start Shared Screen B (눈 감기 3초 카운트다운 - 전체 모둠원 동시 진행)
     function startSharedScreenBCountdown(duration = 3) {
-      if (AppState.phase === 'completed' || AppState.phase === 'reproduction' || AppState.phase === 'transition') return;
+      if (AppState.phase === 'completed') return;
 
       clearAllGameTimers();
 
@@ -1472,7 +1455,7 @@
 
     // SCREEN A: Eyes Open! (3초 선택 시간)
     function startScreenATimer(duration = 3.0) {
-      if (AppState.phase === 'completed' || AppState.phase === 'reproduction' || AppState.phase === 'transition') return;
+      if (AppState.phase === 'completed') return;
 
       clearAllGameTimers();
 
@@ -1669,31 +1652,7 @@
     }
 
     function simulateBotClicksIfNeeded() {
-      // If bots exist in group, let them pick 1 cookie each in this round
-      const bots = AppState.members.filter(m => m.isBot);
-      if (bots.length > 0) {
-        bots.forEach(bot => {
-          if (!AppState.currentRoundPicks.includes(bot.name)) {
-            AppState.currentRoundPicks.push(bot.name);
-            const aliveCookies = AppState.cookies.filter(c => c.alive);
-            if (aliveCookies.length > 25) {
-              // Biased pick: cookies that DO NOT match background are noticed more easily!
-              const bgIsRed = (AppState.stage === 1);
-              let targetPool = aliveCookies.filter(c => bgIsRed ? (c.color !== 'red') : (c.color !== 'green'));
-              if (targetPool.length === 0 || Math.random() < 0.25) {
-                targetPool = aliveCookies;
-              }
-              const chosen = targetPool[Math.floor(Math.random() * targetPool.length)];
-              if (chosen) {
-                chosen.alive = false;
-                chosen.opacity = 0;
-              }
-            }
-          }
-        });
-        drawCookies();
-        updateTopCounters();
-      }
+      // In production classroom mode, all participants are actual students
     }
 
     function checkConditionOrNextScreenB() {
@@ -1838,6 +1797,7 @@
 
     function closeStageTransitionModal() {
       modalStageTransition.classList.add('hidden');
+      AppState.phase = 'game';
     }
 
     function updateTransitionRoleViews() {
@@ -1867,6 +1827,7 @@
 
     function closeReproductionModal() {
       modalReproduction.classList.add('hidden');
+      AppState.phase = 'screenB';
     }
 
     function updateReproRoleViews() {
@@ -1999,6 +1960,7 @@
       });
 
       // Start Screen B for the new generation!
+      AppState.phase = 'screenB';
       startScreenBTimer(3);
     }
 
